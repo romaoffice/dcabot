@@ -1,15 +1,9 @@
 {
-  
-"dependencies": {
-  
-  
-"ccxt": "^1.56.29",
-  
-  
-"fs": "^0.0.1-security",
-  
-  
-"lodash": "^4.17.21"
-  
-}
+  "dependencies": {
+    "ccxt": "^1.56.29",
+    "fs": "^0.0.1-security",
+    "lodash": "^4.17.21",
+    "technicalindicators": "^3.1.0",
+    "terminal-kit": "^2.1.8"
+  }
 }

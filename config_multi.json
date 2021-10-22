@@ -1,9 +1,19 @@
 {
     "marketplace":"USDT",
-    "token":"AVAX",
-    "apiKey":"k3bOo5YmmSvkBXmcMEMkJH5krwS7XUGR04wDacm3TvNqqTIpWAmdEYTuezGDQIwO",
-    "secret":"8mA8Qi93eFolLNgNrYM4dOhBCVzRSPFmB6hSNHmqNlQa9jncVQdmpuZrY5cXrzmy",
-    "buyamount":10,
-    "tp":2,
-    "dca":[[2,100],[4,100],[6,100],[8,100],[10,100],[12,100]]
+    "tokenlist":[
+        {"token":"AVAX","min":30,"max":100},
+        {"token":"CHESS","min":3,"max":13}
+    ],
+    "apiKey":"iALoKUiAKslA8at6xlKkYTfHLrFGsB2TupQVPd1Rzn9HFdcfPOps0yM5iJurhl77",
+    "secret":"nIrwG5etQTlz2RgRhreXXl7oU7PlKT6yi3q0nrxaCst2gheidjPAcWibc5UkISMF",
+    "buyamount":20,
+    "tp":3,
+    "sl":10,
+    "continueflag":1,
+    "rsi_level":50,
+    "rsi_interval":"5m",
+    "trstart":1.5,
+    "trstop":0.1,
+
+    "dca":[[2,100],[4,100],[6,100],[8,100],[10,100],[15,100]]
 }
