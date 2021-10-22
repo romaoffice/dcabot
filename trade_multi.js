@@ -263,7 +263,7 @@ const showui =()=>{
     }
     term.moveTo( 1 , 1+bot_index*ui_lines) ;
     term.bold.green(token)("[%s:",working_zone?'working zone':'waiting zone').yellow(current_price)("(%d-%d),rsi(%d)]\n",minprice,maxprice,rsivalue);
-    if(dcalevel>0){
+    if(dcalevel>0 && dcalimit.length>dcalevel-1){
         if(dcalevel>maxdcalevel){
             term("dca level :%d,tp:%f,sl:%f,tr stop:%f\n",dcalevel-1,dcatp[dcalevel-1].toFixedNumber(precision.price).noExponents(),sl>0?stoploss:0,trprice);
         }else{
