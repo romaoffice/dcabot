@@ -2,7 +2,7 @@
     "marketplace":"USDT",
     "tokenlist":[
         {"token":"AVAX","min":30,"max":100},
-        {"token":"CHESS","min":3,"max":13}
+        {"token":"CRV","min":3.2,"max":6}
     ],
     "apiKey":"iALoKUiAKslA8at6xlKkYTfHLrFGsB2TupQVPd1Rzn9HFdcfPOps0yM5iJurhl77",
     "secret":"nIrwG5etQTlz2RgRhreXXl7oU7PlKT6yi3q0nrxaCst2gheidjPAcWibc5UkISMF",

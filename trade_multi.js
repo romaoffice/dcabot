@@ -228,7 +228,7 @@ const watchmarket = async()=> {
             await write_status();
             add_log("Place orders.Max dca level="+maxdcalevel);
         }else{
-            if(dcalevel<maxdcalevel && buyorders==0){
+            if(dcalevel>0 && dcalevel<maxdcalevel && buyorders==0){
                 exchange.cancelOrder(sellorderid,symbol);
                 dcalevel++;
                 let balance_all = await exchange.fetchBalance();
@@ -242,7 +242,6 @@ const watchmarket = async()=> {
 
     }catch(e){
         add_log(e.message)
-        console.log(e);
     }
  
  setTimeout(watchmarket,2000);
