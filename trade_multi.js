@@ -3,6 +3,7 @@ const ccxt = require("ccxt");
 const _ = require('lodash');
 var term = require( 'terminal-kit' ).terminal ;
 var RSI = require('technicalindicators').RSI;
+const lockfile = require('proper-lockfile');
 
 const {
     marketplace,
@@ -18,7 +19,7 @@ const {
     trstart,
     trstop,
     dca
-} = require('./config_multi');
+} = require('./config');
 
 const status_file_name = 'status_multi_symbol.json'
 let dcalevel,dcatp,dcalimit,openprice,status,stoploss,dcatrlevel,trprice;
@@ -74,24 +75,31 @@ let symbol = token+"/"+marketplace;
 let precision;
 
 const init  = async ()=>{
-    
-    status = JSON.parse(fs.readFileSync(status_file_name, 'utf8'));
+    try{
+        status = JSON.parse(fs.readFileSync(status_file_name, 'utf8'));
 
-    if(status[token]==undefined){
-        status[token] = {"dcalevel":0,"dcatp":[],"openprice":0,"dcalimit":[],"stoploss":0,"dcatrlevel":[],'trprice':0}
+        if(status[token]==undefined){
+            status[token] = {"dcalevel":0,"dcatp":[],"openprice":0,"dcalimit":[],"stoploss":0,"dcatrlevel":[],'trprice':0}
+        }
+
+        dcalevel = status[token].dcalevel;
+        dcatp = status[token].dcatp;
+        dcalimit = status[token].dcalimit;
+        dcatrlevel = status[token].dcatrlevel;
+        trprice = status[token].trprice;
+        openprice = status[token].openprice;
+        stoploss = status[token].stoploss;
+        markets = await exchange.fetchMarkets();
+        const mdata  = _.find(markets, o => o.symbol === symbol);
+        precision = mdata.precision;
+    }catch(e){
+        add_log('failed to init,try again' );
+        await showui();
+        setTimeout(init,2000);
+        return;
     }
-
-    dcalevel = status[token].dcalevel;
-    dcatp = status[token].dcatp;
-    dcalimit = status[token].dcalimit;
-    dcatrlevel = status[token].dcatrlevel;
-    trprice = status[token].trprice;
-    openprice = status[token].openprice;
-    stoploss = status[token].stoploss;
-    markets = await exchange.fetchMarkets();
-     const mdata  = _.find(markets, o => o.symbol === symbol);
-     precision = mdata.precision;
-     watchmarket();
+    //await cancelAllOrders();
+    watchmarket();
 }
 const cancelAllOrders = async()=>{
     const openorders = await exchange.fetchOpenOrders (symbol);
@@ -121,8 +129,8 @@ const watchmarket = async()=> {
         current_price =price; 
         const rsi_current_value = await get_rsi();
         rsivalue = rsi_current_value!=undefined?rsi_current_value:rsivalue;        
-        working_zone = (price>minprice && price<maxprice && rsivalue<rsi_level);
-        showui();
+        working_zone = (price>minprice && price<maxprice && (rsi_level==0 || rsivalue<rsi_level));
+        await showui();
         const openorders = await exchange.fetchOpenOrders (symbol);
         const order_count = openorders.length;
         let sellorders =0;
@@ -143,7 +151,7 @@ const watchmarket = async()=> {
             await init_status();
             const balance_all_ = await exchange.fetchBalance();
             add_log("Terminated trade with profit.Current balance="+balance_all_[marketplace].total);
-            showui();
+            await showui();
             if(continueflag){
                 setTimeout(watchmarket,2000);
             }        
@@ -153,7 +161,7 @@ const watchmarket = async()=> {
         if(dcalevel ==0 && order_count>0){
             add_log("Found wrong position with config file.try close all orders.")
             await closeAllOrders();
-            showui();        
+            await showui();        
             if(continueflag){
                 setTimeout(watchmarket,2000);
             }        
@@ -163,7 +171,7 @@ const watchmarket = async()=> {
         if(dcalevel>0 && sl>0 && price <stoploss){
             add_log("The price hit stoploss.Try close all orders.")
             await closeAllOrders();
-            showui();        
+            await showui();        
             if(continueflag){
                 setTimeout(watchmarket,2000);
             }        
@@ -241,7 +249,7 @@ const watchmarket = async()=> {
         }
 
     }catch(e){
-        add_log(e.message)
+        add_log(e.message.slice(0,20))
     }
  
  setTimeout(watchmarket,2000);
@@ -254,8 +262,8 @@ const add_log = (log)=>{
     status_messages[status_messages.length-1] =log;
 }
 
-const showui =()=>{
-
+const showui =async()=>{
+    await lockfile.lock('config.json')
     term.moveTo( 1 , 1+bot_index*ui_lines) ;
     for(let i=0;i<ui_lines;i++){
         term('                                                                                                  \n');
@@ -272,6 +280,7 @@ const showui =()=>{
     for(let i=0;i<status_messages.length;i++){
         term.gray("%s\n",status_messages[i]);
     }
+    await lockfile.unlock('config.json')
 }
 
 const get_rsi = async()=>{
@@ -293,6 +302,7 @@ const get_rsi = async()=>{
     }
 }
 const write_status = async()=>{
+    await lockfile.lock(status_file_name)
     const json = {
         "dcalevel":dcalevel,
         "dcatp":dcatp,
@@ -304,7 +314,7 @@ const write_status = async()=>{
     };
     status[token] = json;
     fs.writeFile(status_file_name, JSON.stringify(status), 'utf8',()=>{});
-    
+    await lockfile.unlock(status_file_name)
 }
 
 const init_status = async()=>{
@@ -318,8 +328,7 @@ const init_status = async()=>{
     trprice = status[token].trprice;
     openprice = status[token].openprice;
     stoploss = status[token].stoploss;
-
-    fs.writeFile(status_file_name, JSON.stringify(status), 'utf8',()=>{});    
+    await write_status();
 }
 
 init();

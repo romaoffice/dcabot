@@ -7,12 +7,34 @@ var con = mysql.createConnection({
   database: "trading"
 });
 
-con.connect(function(err) {
-  if (err) throw err;
-  console.log("Connected!");
-  var sql = "INSERT INTO customers (name, address) VALUES ('Company Inc', 'Highway 37')";
-  con.query(sql, function (err, result) {
-    if (err) throw err;
-    console.log("1 record inserted");
-  });
-});
+const connect_db = async()=>{
+  try{
+    await con.connect()
+    return true;
+  }catch{
+    return false;
+  }
+}
+
+const insert_deals =async (data)=>{
+  try{
+    var sql = "INSERT INTO deals (s_date,status,pair,based,avg_entry_price,entry_price,entry_total,take_profit,DCA_no,fees,net_profit_per,net_profit_amount,deal_status) VALUES"+
+    " ('Company Inc', 'Highway 37')";
+    await con.query(sql);
+  
+  }catch{
+    console.log('error db');
+  }
+}
+
+const update_deals = async(id,data)=>{
+
+}
+
+const insert_errors = async(data)=>{
+
+}
+
+const insert_orders = async(data)=>{
+
+}
