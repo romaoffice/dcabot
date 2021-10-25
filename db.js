@@ -3,13 +3,20 @@ var MySql = require('sync-mysql');
 var connection;
 
 const inittoken  = {"tporderid":-1,"dcaorderid":-1,"averageprice":[],"totalqty":[],"deals_id":-1,"dcalevel":0,"dcatp":[],"openprice":0,"dcalimit":[],"stoploss":0,"dcatrlevel":[],'trprice':0};
+const {
+  host,
+  user,
+  password,
+  database
+} = require('./config');
+
 
 const init_mysql=()=>{
    connection = new MySql({
-    host: "localhost",
-    user: "root",
-    password: "",
-    database: "trading"
+    host: host,
+    user: user,
+    password: password,
+    database: database
   });
   }
 const addq=(data)=>{
