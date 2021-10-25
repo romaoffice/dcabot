@@ -3,8 +3,9 @@ const ccxt = require("ccxt");
 const _ = require('lodash');
 var term = require( 'terminal-kit' ).terminal ;
 var RSI = require('technicalindicators').RSI;
-const lockfile = require('proper-lockfile');
-
+var Mutex = require('async-mutex').Mutex;
+const mutex = new Mutex();
+const db = require("./db");
 const {
     marketplace,
     apiKey,
@@ -21,9 +22,7 @@ const {
     dca
 } = require('./config');
 
-const status_file_name = 'status_multi_symbol.json'
-let dcalevel,dcatp,dcalimit,openprice,status,stoploss,dcatrlevel,trprice;
-
+let deals_id,dcalevel,dcatp,dcalimit,openprice,status,stoploss,dcatrlevel,trprice,tporderid,dcaorderid,averageprice,totalqty;
 var myArgs = process.argv.slice(2);
 let bot_index =myArgs.length>0 ? parseInt(myArgs[0]):0;
 
@@ -76,22 +75,30 @@ let precision;
 
 const init  = async ()=>{
     try{
-        status = JSON.parse(fs.readFileSync(status_file_name, 'utf8'));
 
-        if(status[token]==undefined){
-            status[token] = {"dcalevel":0,"dcatp":[],"openprice":0,"dcalimit":[],"stoploss":0,"dcatrlevel":[],'trprice':0}
-        }
+        // status = JSON.parse(fs.readFileSync(status_file_name, 'utf8'));
+        // if(status==undefined){
+        //     status = {"dcalevel":0,"dcatp":[],"openprice":0,"dcalimit":[],"stoploss":0,"dcatrlevel":[],'trprice':0}
+        // }
 
-        dcalevel = status[token].dcalevel;
-        dcatp = status[token].dcatp;
-        dcalimit = status[token].dcalimit;
-        dcatrlevel = status[token].dcatrlevel;
-        trprice = status[token].trprice;
-        openprice = status[token].openprice;
-        stoploss = status[token].stoploss;
+        status = db.getstatus_tokens(token)
+        deals_id = status.deals_id;
+        dcalevel = status.dcalevel;
+        dcatp = status.dcatp;
+        dcalimit = status.dcalimit;
+        dcatrlevel = status.dcatrlevel;
+        trprice = status.trprice;
+        openprice = status.openprice;
+        stoploss = status.stoploss;
+        tporderid = status.tporderid;
+        dcaorderid = status.dcaorderid;
+        averageprice = status.averageprice;
+        totalqty=status.totalqty;
+
         markets = await exchange.fetchMarkets();
         const mdata  = _.find(markets, o => o.symbol === symbol);
         precision = mdata.precision;
+
     }catch(e){
         add_log('failed to init,try again' );
         await showui();
@@ -110,13 +117,13 @@ const cancelAllOrders = async()=>{
     }
 }
 const closeAllOrders = async()=>{
-    const balance_all_ = await exchange.fetchBalance();
-    const tokenbalance = balance_all_[token].total;
     const openorders = await exchange.fetchOpenOrders (symbol);
     const order_count =openorders.length; 
     for(let i=0;i<order_count;i++){
         await exchange.cancelOrder(openorders[i].id,symbol);
     }
+    const balance_all_ = await exchange.fetchBalance();
+    const tokenbalance = balance_all_[token].total;
     await exchange.createMarketOrder(symbol,"sell",tokenbalance.toFixedNumber(precision.amount).noExponents(),current_price);             
     await init_status();
     add_log("Closed all orders in "+token);
@@ -147,7 +154,7 @@ const watchmarket = async()=> {
         }
 
         if(dcalevel>0 && sellorders==0){
-            cancelAllOrders();
+            await cancelAllOrders();
             await init_status();
             const balance_all_ = await exchange.fetchBalance();
             add_log("Terminated trade with profit.Current balance="+balance_all_[marketplace].total);
@@ -210,11 +217,18 @@ const watchmarket = async()=> {
             dcalimit = [];
             dcatp = [];
             dcatrlevel=[];
+            averageprice=[];
+            totalqty=[];
             trprice=0;
             dcatp[0] = tpstart;
             dcatrlevel[0] = price * (100+trstart)/100;;
+            //"tporderid": tporderid,
+            //"dcaorderid": dcaorderid,
+    
             let allbuy_marketplace = buylot;
             let allbuy_token = buylot/price;
+            averageprice[0] = price;
+            totalqty[0] = allbuy_token
 
             for (let i=0;i<maxdcalevel;i++){
                 dcalimit[i] = [buylot*dca[i][1]/100,price * (100-dca[i][0])/100];
@@ -222,16 +236,86 @@ const watchmarket = async()=> {
                 const buy_token =  dcalimit[i][0]/dcalimit[i][1];
                 allbuy_marketplace = allbuy_marketplace + buy_marketplace;
                 allbuy_token = allbuy_token + buy_token;
+                
+                totalqty[i+1] =allbuy_token;
+                averageprice[i+1] = allbuy_marketplace/allbuy_token;
+
                 dcatp[i+1] = (allbuy_marketplace*(100+tp)/100)/allbuy_token;
                 dcatrlevel[i+1] = (allbuy_marketplace*(100+trstart)/100)/allbuy_token;
             }
-
-            await exchange.createLimitBuyOrder(symbol,(dcalimit[0][0]/dcalimit[0][1]).toFixedNumber(precision.amount).noExponents(),dcalimit[0][1]);
-            
+            const rt = db.insert_deals({
+                's_date':new Date().toISOString(),
+                'pair':token,
+                'based':marketplace,
+                'avg_entry_price':price,
+                'entry_price':price,
+                'entry_total':cost,
+                'take_profit':dcatp.join(','),
+                'DCA_No':0,
+                'deal_status':'Open'
+            })
+            deals_id = rt.insertId;
+            db.insert_orders({
+                'deal_id':deals_id,
+                'date':new Date().toISOString(),
+                'order_id':order.id,
+                'pair':token,
+                'based':marketplace,
+                'side':'buy',
+                'type':'market',
+                'qty':cost,
+                'usdt':buylot,
+                'average':price,
+                'order_type':'Based Order',
+                'status':'filled',
+                'level':0,
+                'fee':order.fee,
+                'role':'taker',
+                'order_status':'open'
+            })
+            const orderbuy = await exchange.createLimitBuyOrder(symbol,(dcalimit[0][0]/dcalimit[0][1]).toFixedNumber(precision.amount).noExponents(),dcalimit[0][1]);
+            const rt_orders_buy = db.insert_orders({
+                'deal_id':deals_id,
+                'date':new Date().toISOString(),
+                'order_id':orderbuy.id,
+                'pair':token,
+                'based':marketplace,
+                'side':'buy',
+                'type':'limit',
+                'qty':dcalimit[0][0]/dcalimit[0][1],
+                'usdt':dcalimit[0][0],
+                'average':dcalimit[0][1],
+                'order_type':'Based Order',
+                'status':'New',
+                'level':1,
+                'fee':orderbuy.fee,
+                'role':'taker',
+                'order_status':'open'
+            })
             
             balance_all = await exchange.fetchBalance();
             const tokenbalance = balance_all[token].total;
-            exchange.createLimitSellOrder(symbol,tokenbalance.toFixedNumber(precision.amount).noExponents(),tpstart.toFixedNumber(precision.price).noExponents());
+            const ordersell = await exchange.createLimitSellOrder(symbol,tokenbalance.toFixedNumber(precision.amount).noExponents(),tpstart.toFixedNumber(precision.price).noExponents());
+            const rt_orders_sell=db.insert_orders({
+                'deal_id':deals_id,
+                'date':new Date().toISOString(),
+                'order_id':ordersell.id,
+                'pair':token,
+                'based':marketplace,
+                'side':'sell',
+                'type':'limit',
+                'qty':tokenbalance,
+                'usdt':tpstart*tokenbalance,
+                'average':tpstart,
+                'order_type':'Based Order',
+                'status':'New',
+                'level':1,
+                'fee':ordersell.fee,
+                'role':'Seller',
+                'order_status':'open'
+            })
+            tporderid = rt_orders_sell.insertId;
+            dcaorderid = rt_orders_buy.insertId;
             dcalevel = 1;
             await write_status();
             add_log("Place orders.Max dca level="+maxdcalevel);
@@ -249,7 +333,7 @@ const watchmarket = async()=> {
         }
 
     }catch(e){
-        add_log(e.message.slice(0,20))
+        add_log(e.message.slice(0,50))
     }
  
  setTimeout(watchmarket,2000);
@@ -263,24 +347,24 @@ const add_log = (log)=>{
 }
 
 const showui =async()=>{
-    await lockfile.lock('config.json')
-    term.moveTo( 1 , 1+bot_index*ui_lines) ;
-    for(let i=0;i<ui_lines;i++){
-        term('                                                                                                  \n');
-    }
-    term.moveTo( 1 , 1+bot_index*ui_lines) ;
-    term.bold.green(token)("[%s:",working_zone?'working zone':'waiting zone').yellow(current_price)("(%d-%d),rsi(%d)]\n",minprice,maxprice,rsivalue);
-    if(dcalevel>0 && dcalimit.length>dcalevel-1){
-        if(dcalevel>maxdcalevel){
-            term("dca level :%d,tp:%f,sl:%f,tr stop:%f\n",dcalevel-1,dcatp[dcalevel-1].toFixedNumber(precision.price).noExponents(),sl>0?stoploss:0,trprice);
-        }else{
-            term("dca level :%d, next:%f,tp:%f,sl:%f,tr stop:%f\n",dcalevel-1,dcalimit[dcalevel-1][1].toFixedNumber(precision.price).noExponents(),dcatp[dcalevel-1].toFixedNumber(precision.price).noExponents(),sl>0?stoploss:0,trprice);
+    await mutex.runExclusive(async () => {
+        term.moveTo( 1 , 1+bot_index*ui_lines) ;
+        for(let i=0;i<ui_lines;i++){
+            term('                                                                                                  \n');
         }
-    }
-    for(let i=0;i<status_messages.length;i++){
-        term.gray("%s\n",status_messages[i]);
-    }
-    await lockfile.unlock('config.json')
+        term.moveTo( 1 , 1+bot_index*ui_lines) ;
+        term.bold.green(token)("[%s:",working_zone?'working zone':'waiting zone').yellow(current_price)("(%d-%d),rsi(%d)]\n",minprice,maxprice,rsivalue);
+        if(dcalevel>0 && dcalimit.length>dcalevel-1){
+            if(dcalevel>maxdcalevel){
+                term("dca level :%d,tp:%f,sl:%f,tr stop:%f\n",dcalevel-1,dcatp[dcalevel-1].toFixedNumber(precision.price).noExponents(),sl>0?stoploss:0,trprice);
+            }else{
+                term("dca level :%d, next:%f,tp:%f,sl:%f,tr stop:%f\n",dcalevel-1,dcalimit[dcalevel-1][1].toFixedNumber(precision.price).noExponents(),dcatp[dcalevel-1].toFixedNumber(precision.price).noExponents(),sl>0?stoploss:0,trprice);
+            }
+        }
+        for(let i=0;i<status_messages.length;i++){
+            term.gray("%s\n",status_messages[i]);
+        }
+    });
 }
 
 const get_rsi = async()=>{
@@ -302,32 +386,34 @@ const get_rsi = async()=>{
     }
 }
 const write_status = async()=>{
-    await lockfile.lock(status_file_name)
     const json = {
+        "deals_id":deals_id,
         "dcalevel":dcalevel,
         "dcatp":dcatp,
         "dcalimit":dcalimit,
         "openprice":openprice,
         "stoploss":stoploss,
         "dcatrlevel":dcatrlevel,
-        "trprice":trprice
+        "trprice":trprice,
+        "tporderid": tporderid,
+        "dcaorderid": dcaorderid,
+        "averageprice":averageprice,
+        "totalqty":totalqty
     };
-    status[token] = json;
-    fs.writeFile(status_file_name, JSON.stringify(status), 'utf8',()=>{});
-    await lockfile.unlock(status_file_name)
+    db.setstatus_tokens(token,json)
 }
 
 const init_status = async()=>{
 
-    status[token] = {"dcalevel":0,"dcatp":[],"openprice":0,"dcalimit":[],"stoploss":0,"dcatrlevel":[],'trprice':0}
-
-    dcalevel = status[token].dcalevel;
-    dcatp = status[token].dcatp;
-    dcalimit = status[token].dcalimit;
-    dcatrlevel = status[token].dcatrlevel;
-    trprice = status[token].trprice;
-    openprice = status[token].openprice;
-    stoploss = status[token].stoploss;
+    status = {"tporderid":-1,"dcaorderid":-1,"averageprice":[],"totalqty":[],"deals_id":-1,"dcalevel":0,"dcatp":[],"openprice":0,"dcalimit":[],"stoploss":0,"dcatrlevel":[],'trprice':0};
+    deals_id = status.deals_id;
+    dcalevel = status.dcalevel;
+    dcatp = status.dcatp;
+    dcalimit = status.dcalimit;
+    dcatrlevel = status.dcatrlevel;
+    trprice = status.trprice;
+    openprice = status.openprice;
+    stoploss = status.stoploss;
     await write_status();
 }
 
