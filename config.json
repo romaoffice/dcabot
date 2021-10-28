@@ -1,8 +1,8 @@
 {
     "marketplace":"USDT",
     "tokenlist":[
-        {"token":"ONE","min":0.2,"max":0.5},
-        {"token":"CHESS","min":3,"max":6}
+        {"token":"ALGO","min":2,"max":3},
+        {"token":"LTC","min":190,"max":210}
     ],
     "apiKey":"iALoKUiAKslA8at6xlKkYTfHLrFGsB2TupQVPd1Rzn9HFdcfPOps0yM5iJurhl77",
     "secret":"nIrwG5etQTlz2RgRhreXXl7oU7PlKT6yi3q0nrxaCst2gheidjPAcWibc5UkISMF",

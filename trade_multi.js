@@ -81,13 +81,13 @@ const init  = async ()=>{
         precision = mdata.precision;
 
     }catch(e){
-        add_log('failed to init,try again',true );
+        add_log('failed to init,try again('+e.message.slice(0,20)+"...)",true );
         await showui();
         setTimeout(init,2000);
         return;
     }
-    //await cancelAllOrders();
-    watchmarket();
+    await cancelAllOrders();
+    //watchmarket();
 }
 const cancelAllOrders = async()=>{
     const openorders = await exchange.fetchOpenOrders (symbol);
