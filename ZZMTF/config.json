@@ -1,0 +1,24 @@
+{
+    "marketplace":"USDT",
+    "tokenlist":["C98"],
+    "apiKey":"iALoKUiAKslA8at6xlKkYTfHLrFGsB2TupQVPd1Rzn9HFdcfPOps0yM5iJurhl77",
+    "secret":"nIrwG5etQTlz2RgRhreXXl7oU7PlKT6yi3q0nrxaCst2gheidjPAcWibc5UkISMF",
+    
+    "interval":"1m",
+    "htfIntrerval":"30m",
+    "fiboPeriod":2,
+
+    "stoPeriod":14,
+    "stoSignalPeriod":4,
+    "stoLevel":{"overBought":60,"overSold":50},
+    "rsiPeriod":14,
+    "rsiLevel":{"overBought":60,"overSold":50},
+
+    "emaPeriod":200,
+
+    "firstEntry":15,
+    "saftyOrderCount":2,
+    "nextEntry":100,
+    "threshold":2
+
+}

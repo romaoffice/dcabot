@@ -86,8 +86,8 @@ const init  = async ()=>{
         setTimeout(init,2000);
         return;
     }
-    await cancelAllOrders();
-    //watchmarket();
+    //await cancelAllOrders();
+    watchmarket();
 }
 const cancelAllOrders = async()=>{
     const openorders = await exchange.fetchOpenOrders (symbol);
