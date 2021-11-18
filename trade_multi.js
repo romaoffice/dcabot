@@ -6,31 +6,15 @@ const mutex = new Mutex();
 const db = require("./db");
 
 const {get_rsi,prepare_number} = require('./utils');
-
-const {
-    marketplace,
-    apiKey,
-    secret,
-    continueflag,
-    tokenlist,
-    buyamount,
-    tp,
-    sl,
-    rsi_level,
-    rsi_interval,
-    trstart,
-    trstop,
-    dca
-} = require('./config');
-
 let deals_id,dcalevel,dcatp,dcalimit,openprice,status,stoploss,dcatrlevel,
     trprice,tporderid,dcaorderid,averageprice,totalqty;
 var myArgs = process.argv.slice(2);
-let bot_index =myArgs.length>0 ? parseInt(myArgs[0]):0;
+let configSettings = JSON.parse(myArgs[0]);
+let bot_index =myArgs.length>0 ? parseInt(myArgs[1]):0;
 
-const token  = tokenlist[bot_index].token;
-const minprice  = tokenlist[bot_index].min;
-const maxprice = tokenlist[bot_index].max;
+const token  = configSettings.tokenlist[bot_index].token;
+const minprice  = configSettings.tokenlist[bot_index].min;
+const maxprice = configSettings.tokenlist[bot_index].max;
 
 let rsivalue=0;
 let status_messages=['',''];
@@ -38,11 +22,11 @@ const ui_lines = 4;
 let working_zone = true;
 let current_price=0;
 
-const maxdcalevel = dca.length;
+const maxdcalevel = configSettings.dca.length;
 const enhancedExchangeID = 'binance';
 const exchange = new ccxt[enhancedExchangeID]({
-    apiKey,
-    secret,
+    apiKey:configSettings.apiKey,
+    secret:configSettings.secret,
     options: { adjustForTimeDifference: true, 
         recvWindow: 10000,
         warnOnFetchOpenOrdersWithoutSymbol: false,
@@ -52,7 +36,7 @@ const exchange = new ccxt[enhancedExchangeID]({
 prepare_number();
 
 let markets ;
-let symbol = token+"/"+marketplace;
+let symbol = token+"/"+configSettings.marketplace;
 let precision;
 
 const initvarbyjson = (status)=>{
@@ -81,9 +65,9 @@ const init  = async ()=>{
         precision = mdata.precision;
 
     }catch(e){
-        add_log('failed to init,try again('+e.message.slice(0,20)+"...)",true );
+        add_log('failed to init,please try again('+e.message.slice(0,20)+"...)",true );
         await showui();
-        setTimeout(init,2000);
+        //setTimeout(init,2000);
         return;
     }
     //await cancelAllOrders();
@@ -111,9 +95,9 @@ const watchmarket = async()=> {
         const price_all = await exchange.fetchTicker(symbol);
         const price = price_all.bid;
         current_price =price; 
-        const rsi_current_value = await get_rsi(exchange,symbol,rsi_interval);
+        const rsi_current_value = await get_rsi(exchange,symbol,configSettings.rsi_interval);
         rsivalue = rsi_current_value!=undefined?rsi_current_value:rsivalue;        
-        working_zone = (price>minprice && price<maxprice && (rsi_level==0 || rsivalue<rsi_level));
+        working_zone = (price>minprice && price<maxprice && (configSettings.rsi_level==0 || rsivalue<configSettings.rsi_level));
         await showui();
         const openorders = await exchange.fetchOpenOrders (symbol);
         const order_count = openorders.length;
@@ -144,9 +128,9 @@ const watchmarket = async()=> {
             await init_status();
 
             const balance_all_ = await exchange.fetchBalance();
-            add_log("Terminated trade with profit.Current balance="+balance_all_[marketplace].total);
+            add_log("Terminated trade with profit.Current balance="+balance_all_[configSettings.marketplace].total);
             await showui();
-            if(continueflag){
+            if(configSettings.continueflag){
                 setTimeout(watchmarket,2000);
             }        
             return;
@@ -156,13 +140,13 @@ const watchmarket = async()=> {
             add_log("Found wrong position with config file.try close all orders.")
             await closeAllOrders();
             await showui();        
-            if(continueflag){
+            if(configSettings.continueflag){
                 setTimeout(watchmarket,2000);
             }        
             return;
         }
 
-        if(dcalevel>0 && sl>0 && price <stoploss){
+        if(dcalevel>0 && configSettings.sl>0 && price <stoploss){
             add_log("The price hit stoploss.Try close all orders.")
             db.update_deals(deals_id,{
                 'deal_status':'Closed',
@@ -174,12 +158,12 @@ const watchmarket = async()=> {
             })
             await closeAllOrders();
             await showui();        
-            if(continueflag){
+            if(configSettings.continueflag){
                 setTimeout(watchmarket,2000);
             }        
             return;
         }
-        if(dcalevel>0 && trstart>0 &&  trprice>0 && price<trprice){
+        if(dcalevel>0 && configSettings.trstart>0 &&  trprice>0 && price<trprice){
             add_log("The price hit trailling stop.Try close all order");
             db.update_deals(deals_id,{
                 'deal_status':'Closed',
@@ -191,32 +175,32 @@ const watchmarket = async()=> {
             })
             await closeAllOrders();
             add_log("Closed all orders with profit.");
-            if(continueflag){
+            if(configSettings.continueflag){
                 setTimeout(watchmarket,2000);
             }        
             return;
         }
 
-        if(dcalevel>0 && trstart>0 &&  trprice==0 && price >dcatrlevel[dcalevel-1]){
+        if(dcalevel>0 && configSettings.trstart>0 &&  trprice==0 && price >dcatrlevel[dcalevel-1]){
             add_log("The trailling stop started.")
             trprice = dcatrlevel[dcalevel-1];
             await write_status();
         }
-        if(dcalevel>0 && trstart>0 &&  trprice>0 && price*(100-trstop)/100 >trprice){
-            add_log("The trailling stop moved to ."+(price*(100-trstop)/100));
-            trprice = price*(100-trstop)/100;
+        if(dcalevel>0 && configSettings.trstart>0 &&  trprice>0 && price*(100-configSettings.trstop)/100 >trprice){
+            add_log("The trailling stop moved to ."+(price*(100-configSettings.trstop)/100));
+            trprice = price*(100-configSettings.trstop)/100;
             await write_status();
         }
 
         if(dcalevel==0 && working_zone){
             let balance_all = await exchange.fetchBalance();
-            const balance =balance_all[marketplace].free; 
-            const buylot = balance*buyamount/100;
+            const balance =balance_all[configSettings.marketplace].free; 
+            const buylot = balance*configSettings.buyamount/100;
             const cost = (buylot/price).toFixedNumber(precision.amount).noExponents();
             const order = await exchange.createMarketBuyOrder(symbol,cost);
             openprice = price;
-            const tpstart = price * (100+tp)/100;
-            stoploss = price *(100-sl)/100;
+            const tpstart = price * (100+configSettings.tp)/100;
+            stoploss = price *(100-configSettings.sl)/100;
             dcalimit = [];
             dcatp = [];
             dcatrlevel=[];
@@ -224,14 +208,14 @@ const watchmarket = async()=> {
             totalqty=[];
             trprice=0;
             dcatp[0] = tpstart;
-            dcatrlevel[0] = price * (100+trstart)/100;;
+            dcatrlevel[0] = price * (100+configSettings.trstart)/100;;
             let allbuy_marketplace = buylot;
             let allbuy_token = buylot/price;
             averageprice[0] = price;
             totalqty[0] = allbuy_token
 
             for (let i=0;i<maxdcalevel;i++){
-                dcalimit[i] = [buylot*dca[i][1]/100,price * (100-dca[i][0])/100];
+                dcalimit[i] = [buylot*configSettings.dca[i][1]/100,price * (100-configSettings.dca[i][0])/100];
                 const buy_marketplace =  dcalimit[i][0];
                 const buy_token =  dcalimit[i][0]/dcalimit[i][1];
                 allbuy_marketplace = allbuy_marketplace + buy_marketplace;
@@ -240,13 +224,13 @@ const watchmarket = async()=> {
                 totalqty[i+1] =allbuy_token;
                 averageprice[i+1] = allbuy_marketplace/allbuy_token;
 
-                dcatp[i+1] = (allbuy_marketplace*(100+tp)/100)/allbuy_token;
-                dcatrlevel[i+1] = (allbuy_marketplace*(100+trstart)/100)/allbuy_token;
+                dcatp[i+1] = (allbuy_marketplace*(100+configSettings.tp)/100)/allbuy_token;
+                dcatrlevel[i+1] = (allbuy_marketplace*(100+configSettings.trstart)/100)/allbuy_token;
             }
             const rt = db.insert_deals({
                 's_date':new Date().toISOString(),
                 'pair':token,
-                'based':marketplace,
+                'based':configSettings.marketplace,
                 'avg_entry_price':price.toFixedNumber(precision.price).noExponents(),
                 'entry_price':price.toFixedNumber(precision.price).noExponents(),
                 'entry_total':cost,
@@ -260,7 +244,7 @@ const watchmarket = async()=> {
                 'date':new Date().toISOString(),
                 'order_id':order.id,
                 'pair':token,
-                'based':marketplace,
+                'based':configSettings.marketplace,
                 'side':'buy',
                 'type':'market',
                 'qty':cost,
@@ -279,7 +263,7 @@ const watchmarket = async()=> {
                 'date':new Date().toISOString(),
                 'order_id':orderbuy.id,
                 'pair':token,
-                'based':marketplace,
+                'based':configSettings.marketplace,
                 'side':'buy',
                 'type':'limit',
                 'qty':(dcalimit[0][0]/dcalimit[0][1]).toFixedNumber(precision.amount).noExponents(),
@@ -301,7 +285,7 @@ const watchmarket = async()=> {
                 'date':new Date().toISOString(),
                 'order_id':ordersell.id,
                 'pair':token,
-                'based':marketplace,
+                'based':configSettings.marketplace,
                 'side':'sell',
                 'type':'limit',
                 'qty':tokenbalance,
@@ -333,7 +317,7 @@ const watchmarket = async()=> {
                     'date':new Date().toISOString(),
                     'order_id':orderbuy.id,
                     'pair':token,
-                    'based':marketplace,
+                    'based':configSettings.marketplace,
                     'side':'buy',
                     'type':'limit',
                     'qty':(dcalimit[dcalevel-1][0]/dcalimit[dcalevel-1][1]).toFixedNumber(precision.amount).noExponents(),
@@ -351,7 +335,7 @@ const watchmarket = async()=> {
                     'date':new Date().toISOString(),
                     'order_id':ordersell.id,
                     'pair':token,
-                    'based':marketplace,
+                    'based':configSettings.marketplace,
                     'side':'sell',
                     'type':'limit',
                     'qty':tokenbalance,
@@ -378,12 +362,12 @@ const watchmarket = async()=> {
                 add_log("Filled dca limit order.Placed next dca order "+(dcalevel-1));
             }
         }
-
+        setTimeout(watchmarket,2000);
     }catch(e){
         add_log(e.message.slice(0,50),true)
     }
  
- setTimeout(watchmarket,2000);
+ 
 }
 
 const add_log = (log,iserror=false)=>{
@@ -393,7 +377,7 @@ const add_log = (log,iserror=false)=>{
             'date':new Date().toISOString(),
             'status':'error',
             'pairs':token,
-            'based':marketplace 
+            'based':configSettings.marketplace 
         })
     }
     for(let i=0;i<status_messages.length-1;i++){
@@ -412,9 +396,9 @@ const showui =async()=>{
         term.bold.green(token)("[%s:",working_zone?'working zone':'waiting zone').yellow(current_price)("(%f-%f),rsi(%d)]\n",minprice,maxprice,rsivalue);
         if(dcalevel>0 && dcalimit.length>dcalevel-1){
             if(dcalevel>maxdcalevel){
-                term("dca level :%d,tp:%f,sl:%f,tr stop:%f\n",dcalevel-1,dcatp[dcalevel-1].toFixedNumber(precision.price).noExponents(),sl>0?stoploss:0,trprice);
+                term("dca level :%d,tp:%f,sl:%f,tr stop:%f\n",dcalevel-1,dcatp[dcalevel-1].toFixedNumber(precision.price).noExponents(),configSettings.sl>0?stoploss:0,trprice);
             }else{
-                term("dca level :%d, next:%f,tp:%f,sl:%f,tr stop:%f\n",dcalevel-1,dcalimit[dcalevel-1][1].toFixedNumber(precision.price).noExponents(),dcatp[dcalevel-1].toFixedNumber(precision.price).noExponents(),sl>0?stoploss:0,trprice);
+                term("dca level :%d, next:%f,tp:%f,sl:%f,tr stop:%f\n",dcalevel-1,dcalimit[dcalevel-1][1].toFixedNumber(precision.price).noExponents(),dcatp[dcalevel-1].toFixedNumber(precision.price).noExponents(),configSettings.sl>0?stoploss:0,trprice);
             }
         }
         for(let i=0;i<status_messages.length;i++){
